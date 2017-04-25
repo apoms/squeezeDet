@@ -136,7 +136,7 @@ class ModelSkeleton:
           [mc.BATCH_SIZE, mc.ANCHORS, mc.CLASSES],
           name='pred_class_probs'
       )
-      
+
       # confidence
       num_confidence_scores = mc.ANCHOR_PER_GRID+num_class_probs
       self.pred_conf = tf.sigmoid(
@@ -281,7 +281,7 @@ class ModelSkeleton:
       input_mask = tf.reshape(self.input_mask, [mc.BATCH_SIZE, mc.ANCHORS])
       self.conf_loss = tf.reduce_mean(
           tf.reduce_sum(
-              tf.square((self.ious - self.pred_conf)) 
+              tf.square((self.ious - self.pred_conf))
               * (input_mask*mc.LOSS_COEF_CONF_POS/self.num_objects
                  +(1-input_mask)*mc.LOSS_COEF_CONF_NEG/(mc.ANCHORS-self.num_objects)),
               reduction_indices=[1]
@@ -348,6 +348,16 @@ class ModelSkeleton:
     self.viz_op = tf.summary.image('sample_detection_results',
         self.image_to_show, collections='image_summary',
         max_outputs=mc.BATCH_SIZE)
+
+    self.mask_to_show = tf.placeholder(
+        tf.float32, [None, 24, 78, 3],
+        name='mask_to_show'
+    )
+
+    self.mask_viz_op = tf.summary.image('sample_masks',
+        self.mask_to_show, collections='image_summary',
+        max_outputs=mc.BATCH_SIZE)
+
 
   def _conv_bn_layer(
       self, inputs, conv_param_name, bn_param_name, scale_param_name, filters,
@@ -474,7 +484,7 @@ class ModelSkeleton:
         kernel_val = np.transpose(cw[layer_name][0], [2,3,1,0])
         bias_val = cw[layer_name][1]
         # check the shape
-        if (kernel_val.shape == 
+        if (kernel_val.shape ==
               (size, size, inputs.get_shape().as_list()[-1], filters)) \
            and (bias_val.shape == (filters, )):
           use_pretrained_param = True
@@ -510,7 +520,7 @@ class ModelSkeleton:
           'kernels', shape=[size, size, int(channels), filters],
           wd=mc.WEIGHT_DECAY, initializer=kernel_init, trainable=(not freeze))
 
-      biases = _variable_on_device('biases', [filters], bias_init, 
+      biases = _variable_on_device('biases', [filters], bias_init,
                                 trainable=(not freeze))
       self.model_params += [kernel, biases]
 
@@ -518,7 +528,7 @@ class ModelSkeleton:
           inputs, kernel, [1, stride, stride, 1], padding=padding,
           name='convolution')
       conv_bias = tf.nn.bias_add(conv, biases, name='bias_add')
-  
+
       if relu:
         out = tf.nn.relu(conv_bias, 'relu')
       else:
@@ -539,7 +549,7 @@ class ModelSkeleton:
       )
 
       return out
-  
+
   def _pooling_layer(
       self, layer_name, inputs, size, stride, padding='SAME'):
     """Pooling layer operation constructor.
@@ -555,15 +565,15 @@ class ModelSkeleton:
     """
 
     with tf.variable_scope(layer_name) as scope:
-      out =  tf.nn.max_pool(inputs, 
-                            ksize=[1, size, size, 1], 
+      out =  tf.nn.max_pool(inputs,
+                            ksize=[1, size, size, 1],
                             strides=[1, stride, stride, 1],
                             padding=padding)
       activation_size = np.prod(out.get_shape().as_list()[1:])
       self.activation_counter.append((layer_name, activation_size))
       return out
 
-  
+
   def _fc_layer(
       self, layer_name, inputs, hiddens, flatten=False, relu=True,
       xavier=False, stddev=0.001):
@@ -573,8 +583,8 @@ class ModelSkeleton:
       layer_name: layer name.
       inputs: input tensor
       hiddens: number of (hidden) neurons in this layer.
-      flatten: if true, reshape the input 4D tensor of shape 
-          (batch, height, weight, channel) into a 2D tensor with shape 
+      flatten: if true, reshape the input 4D tensor of shape
+          (batch, height, weight, channel) into a 2D tensor with shape
           (batch, -1). This is used when the input to the fully connected layer
           is output of a convolutional layer.
       relu: whether to use relu or not.
@@ -654,7 +664,7 @@ class ModelSkeleton:
           initializer=kernel_init)
       biases = _variable_on_device('biases', [hiddens], bias_init)
       self.model_params += [weights, biases]
-  
+
       outputs = tf.nn.bias_add(tf.matmul(inputs, weights), biases)
       if relu:
         outputs = tf.nn.relu(outputs, 'relu')

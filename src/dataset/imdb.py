@@ -103,11 +103,11 @@ class imdb(object):
     Returns:
       image_per_batch: images. Shape: batch_size x width x height x [b, g, r]
       label_per_batch: labels. Shape: batch_size x object_num
-      delta_per_batch: bounding box deltas. Shape: batch_size x object_num x 
+      delta_per_batch: bounding box deltas. Shape: batch_size x object_num x
           [dx ,dy, dw, dh]
       aidx_per_batch: index of anchors that are responsible for prediction.
           Shape: batch_size x object_num
-      bbox_per_batch: scaled bounding boxes. Shape: batch_size x object_num x 
+      bbox_per_batch: scaled bounding boxes. Shape: batch_size x object_num x
           [cx, cy, w, h]
     """
     mc = self.mc
@@ -127,6 +127,7 @@ class imdb(object):
         self._cur_idx += mc.BATCH_SIZE
 
     image_per_batch = []
+    masks_per_batch = []
     label_per_batch = []
     bbox_per_batch  = []
     delta_per_batch = []
@@ -144,8 +145,11 @@ class imdb(object):
       im -= mc.BGR_MEANS
       orig_h, orig_w, _ = [float(v) for v in im.shape]
 
+      masks = np.zeros([24, 78, mc.CLASSES])
+
       # load annotations
-      label_per_batch.append([b[4] for b in self._rois[idx][:]])
+      gt_labels = [b[4] for b in self._rois[idx][:]]
+      label_per_batch.append(gt_labels)
       gt_bbox = np.array([[b[0], b[1], b[2], b[3]] for b in self._rois[idx][:]])
 
       if mc.DATA_AUGMENTATION:
@@ -188,6 +192,7 @@ class imdb(object):
       # scale annotation
       x_scale = mc.IMAGE_WIDTH/orig_w
       y_scale = mc.IMAGE_HEIGHT/orig_h
+
       gt_bbox[:, 0::2] = gt_bbox[:, 0::2]*x_scale
       gt_bbox[:, 1::2] = gt_bbox[:, 1::2]*y_scale
       bbox_per_batch.append(gt_bbox)
@@ -196,6 +201,15 @@ class imdb(object):
       aidx_set = set()
       for i in range(len(gt_bbox)):
         overlaps = batch_iou(mc.ANCHOR_BOX, gt_bbox[i])
+
+        cx, cy, w, h = gt_bbox[i, 0], gt_bbox[i, 1], gt_bbox[i, 2], gt_bbox[i, 3]
+        h_scale = float(mc.IMAGE_HEIGHT)/24
+        w_scale = float(mc.IMAGE_WIDTH)/78
+
+        h_lower, h_upper = int(np.floor((cy-h/2)/h_scale)), int(np.ceil((cy+h/2)/h_scale))
+        w_lower, w_upper = int(np.floor((cx-w/2)/w_scale)), int(np.ceil((cx+h/2)/w_scale))
+
+        masks[h_lower: h_upper, w_lower: w_upper, gt_labels[i]] = 1.0
 
         aidx = len(mc.ANCHOR_BOX)
         for ov_idx in np.argsort(overlaps)[::-1]:
@@ -215,7 +229,7 @@ class imdb(object):
               num_objects += 1
             break
 
-        if aidx == len(mc.ANCHOR_BOX): 
+        if aidx == len(mc.ANCHOR_BOX):
           # even the largeset available overlap is 0, thus, choose one with the
           # smallest square distance
           dist = np.sum(np.square(gt_bbox[i] - mc.ANCHOR_BOX), axis=1)
@@ -224,7 +238,7 @@ class imdb(object):
               aidx_set.add(dist_idx)
               aidx = dist_idx
               break
-        
+
         box_cx, box_cy, box_w, box_h = gt_bbox[i]
         delta = [0]*4
         delta[0] = (box_cx - mc.ANCHOR_BOX[aidx][0])/box_w
@@ -235,6 +249,7 @@ class imdb(object):
         aidx_per_image.append(aidx)
         delta_per_image.append(delta)
 
+      masks_per_batch.append(masks)
       delta_per_batch.append(delta_per_image)
       aidx_per_batch.append(aidx_per_image)
 
@@ -246,7 +261,7 @@ class imdb(object):
       print ('number of objects with 0 iou: {}'.format(num_zero_iou_obj))
 
     return image_per_batch, label_per_batch, delta_per_batch, \
-        aidx_per_batch, bbox_per_batch
+        aidx_per_batch, bbox_per_batch, masks_per_batch
 
   def evaluate_detections(self):
     raise NotImplementedError
@@ -267,14 +282,14 @@ class imdb(object):
       error_type = obj[1]
       if error_type not in dets_per_type:
         dets_per_type[error_type] = [{
-            'im_idx':obj[0], 
+            'im_idx':obj[0],
             'bbox':[float(obj[2]), float(obj[3]), float(obj[4]), float(obj[5])],
             'class':obj[6],
             'score': float(obj[7])
         }]
       else:
         dets_per_type[error_type].append({
-            'im_idx':obj[0], 
+            'im_idx':obj[0],
             'bbox':[float(obj[2]), float(obj[3]), float(obj[4]), float(obj[5])],
             'class':obj[6],
             'score': float(obj[7])
@@ -295,7 +310,7 @@ class imdb(object):
             os.path.join(image_dir, det['im_idx']+image_format))
         draw = ImageDraw.Draw(im)
         draw.rectangle(det['bbox'], outline=COLOR)
-        draw.text((det['bbox'][0], det['bbox'][1]), 
+        draw.text((det['bbox'][0], det['bbox'][1]),
                   '{:s} ({:.2f})'.format(det['class'], det['score']),
                   fill=COLOR)
         out_im_path = os.path.join(det_im_dir, str(i)+image_format)
