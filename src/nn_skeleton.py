@@ -101,6 +101,11 @@ class ModelSkeleton:
         name='iou', dtype=tf.float32
     )
 
+    self.class_masks = tf.placeholder(
+      tf.float32, [mc.BATCH_SIZE, mc.GRID_CELLS, mc.CLASSES],
+      name='class_masks')
+
+
     # model parameters
     self.model_params = []
 

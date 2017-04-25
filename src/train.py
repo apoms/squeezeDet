@@ -175,7 +175,7 @@ def train():
           bbox_per_batch, masks_per_batch = imdb.read_batch()
 
       label_indices, bbox_indices, box_delta_values, mask_indices, box_values, \
-          = [], [], [], [], []
+          class_masks = [], [], [], [], [], []
       aidx_set = set()
       num_discarded_labels = 0
       num_labels = 0
@@ -191,6 +191,7 @@ def train():
                 [[i, aidx_per_batch[i][j], k] for k in range(4)])
             box_delta_values.extend(box_delta_per_batch[i][j])
             box_values.extend(bbox_per_batch[i][j])
+            class_masks.append(masks_per_batch[i][j])
           else:
             num_discarded_labels += 1
 
@@ -216,6 +217,7 @@ def train():
               label_indices,
               [mc.BATCH_SIZE, mc.ANCHORS, mc.CLASSES],
               [1.0]*len(label_indices)),
+          model.class_masks: tf.stack(class_masks, axis = 0)
       }
 
       if step % FLAGS.summary_step == 0:

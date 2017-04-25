@@ -36,6 +36,9 @@ def kitti_res50_config():
   mc.DRIFT_Y               = 100
   mc.EXCLUDE_HARD_EXAMPLES = False
 
+  net_output_height, net_output_width = 24, 78
+  mc.GRID_CELLS            = net_output_height * net_output_width
+
   mc.ANCHOR_BOX            = set_anchors(mc)
   mc.ANCHORS               = len(mc.ANCHOR_BOX)
   mc.ANCHOR_PER_GRID       = 9
