@@ -172,7 +172,7 @@ def train():
 
       # read batch input
       image_per_batch, label_per_batch, box_delta_per_batch, aidx_per_batch, \
-          bbox_per_batch = imdb.read_batch()
+          bbox_per_batch, masks_per_batch = imdb.read_batch()
 
       label_indices, bbox_indices, box_delta_values, mask_indices, box_values, \
           = [], [], [], [], []
@@ -231,8 +231,9 @@ def train():
             model, image_per_batch, bbox_per_batch, label_per_batch, det_boxes,
             det_class, det_probs)
         image_per_batch = bgr_to_rgb(image_per_batch)
-        viz_summary = sess.run(
-            model.viz_op, feed_dict={model.image_to_show: image_per_batch})
+        viz_summary = sess.run(tf.summary.merge([model.viz_op, model.mask_viz_op]),
+                            feed_dict={model.image_to_show: image_per_batch,
+                                       model.mask_to_show: masks_per_batch})
 
         num_discarded_labels_op = tf.summary.scalar(
             'counter/num_discarded_labels', num_discarded_labels)
@@ -243,6 +244,7 @@ def train():
 
         summary_writer.add_summary(summary_str, step)
         summary_writer.add_summary(viz_summary, step)
+
         for sum_str in counter_summary_str:
           summary_writer.add_summary(sum_str, step)
 
