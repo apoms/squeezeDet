@@ -6,7 +6,7 @@ import numpy as np
 
 from config import base_model_config
 
-def kitti_res50_config():
+def kitti_res50_filter_config():
   """Specify the parameters to tune below."""
   mc                       = base_model_config('KITTI')
 
@@ -39,6 +39,11 @@ def kitti_res50_config():
   mc.ANCHOR_BOX            = set_anchors(mc)
   mc.ANCHORS               = len(mc.ANCHOR_BOX)
   mc.ANCHOR_PER_GRID       = 9
+
+  net_output_height, net_output_width = 24, 78
+  mc.GRID_CELLS            = net_output_height * net_output_width
+
+  mc.CLASS_BIASSES = np.array([1.0, 1.0, 1.0], dtype=np.float32) / 3
 
   return mc
 

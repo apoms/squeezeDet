@@ -25,6 +25,17 @@ class ResNet50Filter(ModelSkeleton):
       self._add_train_graph()
       self._add_viz_graph()
 
+      self.mask_pred = tf.placeholder(
+        tf.float32, [mc.BATCH_SIZE, 24, 78, mc.CLASSES],
+        name='mask_pred'
+      )
+      self.mask_pred_viz_op = tf.summary.image(
+        'pred_masks',
+        self.mask_pred, collections='image_summary',
+        max_outputs=mc.BATCH_SIZE)
+
+      tf.summary.histogram('preds_hist', self.preds)
+
   def _add_forward_graph(self):
     """NN architecture."""
 
@@ -124,54 +135,47 @@ class ResNet50Filter(ModelSkeleton):
     dropout4 = tf.nn.dropout(res4f, self.keep_prob, name='drop4')
 
     num_output = mc.CLASSES
-    self.preds = self._conv_layer(
+    self.conv_preds = self._conv_layer(
         'conv5', dropout4, filters=num_output, size=3, stride=1,
         padding='SAME', xavier=False, relu=False, stddev=0.0001)
+
+    self.preds = tf.sigmoid(self.conv_preds, 'preds')
 
   def _add_filter_loss_graph(self):
     """Define the loss operation."""
     mc = self.mc
 
-    with tf.variable_scope('class_regression') as scope:
-      # cross-entropy: q * -log(p) + (1-q) * -log(1-p)
-      # add a small value into log to prevent blowing up
-      self.class_loss = tf.truediv(
-          tf.reduce_sum(
-              (self.labels*(-tf.log(self.pred_class_probs+mc.EPSILON))
-               + (1-self.labels)*(-tf.log(1-self.pred_class_probs+mc.EPSILON)))
-              * self.input_mask * mc.LOSS_COEF_CLASS),
-          self.num_objects,
-          name='class_loss'
-      )
+    with tf.variable_scope('pos_class_regression') as scope:
+      # Compute loss as difference in input masks from predicted masks
+      # across class labels
+      num_pos = tf.reduce_sum(self.class_masks)
+      pos_mask = self.preds * self.class_masks
+      self.class_loss = tf.reduce_sum(
+        tf.multiply(tf.abs(pos_mask - self.class_masks),
+                    tf.reshape(mc.CLASS_BIASSES, [1, 1, mc.CLASSES])),
+        name='class_loss'
+      ) / num_pos
+
       tf.add_to_collection('losses', self.class_loss)
 
-    with tf.variable_scope('confidence_score_regression') as scope:
-      input_mask = tf.reshape(self.input_mask, [mc.BATCH_SIZE, mc.ANCHORS])
-      self.conf_loss = tf.reduce_mean(
-          tf.reduce_sum(
-              tf.square((self.ious - self.pred_conf)) 
-              * (input_mask*mc.LOSS_COEF_CONF_POS/self.num_objects
-                 +(1-input_mask)*mc.LOSS_COEF_CONF_NEG/(mc.ANCHORS-self.num_objects)),
-              reduction_indices=[1]
-          ),
-          name='confidence_loss'
-      )
-      tf.add_to_collection('losses', self.conf_loss)
-      tf.summary.scalar('mean iou', tf.reduce_sum(self.ious)/self.num_objects)
+    with tf.variable_scope('neg_class_regression') as scope:
+      num_neg = tf.reduce_sum(1.0 - self.class_masks)
+      neg_mask = (self.preds * (1.0 - self.class_masks))
+      self.background_loss = tf.reduce_sum(
+        tf.multiply(neg_mask,
+                    tf.reshape(mc.CLASS_BIASSES, [1, 1, mc.CLASSES])),
+        name='background_loss'
+      ) / num_neg
 
-    with tf.variable_scope('bounding_box_regression') as scope:
-      self.bbox_loss = tf.truediv(
-          tf.reduce_sum(
-              mc.LOSS_COEF_BBOX * tf.square(
-                  self.input_mask*(self.pred_box_delta-self.box_delta_input))),
-          self.num_objects,
-          name='bbox_loss'
-      )
-      tf.add_to_collection('losses', self.bbox_loss)
+      tf.add_to_collection('losses', self.background_loss)
 
     # add above losses as well as weight decay losses to form the total loss
     self.loss = tf.add_n(tf.get_collection('losses'), name='total_loss')
-    pass
+
+
+    # Only for compatability with other networks
+    self.det_probs = tf.constant([1.0])
+    self.det_class = tf.constant([1.0])
 
   def _res_branch(
       self, inputs, layer_name, in_filters, out_filters, down_sample=False,

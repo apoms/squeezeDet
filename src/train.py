@@ -106,7 +106,8 @@ def train():
   with tf.Graph().as_default():
 
     assert FLAGS.net == 'vgg16' or FLAGS.net == 'resnet50' \
-        or FLAGS.net == 'squeezeDet' or FLAGS.net == 'squeezeDet+', \
+        or FLAGS.net == 'squeezeDet' or FLAGS.net == 'squeezeDet+' \
+        or FLAGS.net == 'resnet50_filter', \
         'Selected neural net architecture not supported: {}'.format(FLAGS.net)
     if FLAGS.net == 'vgg16':
       mc = kitti_vgg16_config()
@@ -124,6 +125,10 @@ def train():
       mc = kitti_squeezeDetPlus_config()
       mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
       model = SqueezeDetPlus(mc, FLAGS.gpu)
+    elif FLAGS.net == 'resnet50_filter':
+      mc = kitti_res50_filter_config()
+      mc.PRETRAINED_MODEL_PATH = FLAGS.pretrained_model_path
+      model = ResNet50Filter(mc, FLAGS.gpu)
 
     imdb = kitti(FLAGS.image_set, FLAGS.data_path, mc)
 
@@ -157,11 +162,12 @@ def train():
     summary_op = tf.summary.merge_all()
     init = tf.global_variables_initializer()
 
+    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
+
     ckpt = tf.train.get_checkpoint_state(FLAGS.train_dir)
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(sess, ckpt.model_checkpoint_path)
 
-    sess = tf.Session(config=tf.ConfigProto(allow_soft_placement=True))
     sess.run(init)
     tf.train.start_queue_runners(sess=sess)
 
@@ -191,9 +197,9 @@ def train():
                 [[i, aidx_per_batch[i][j], k] for k in range(4)])
             box_delta_values.extend(box_delta_per_batch[i][j])
             box_values.extend(bbox_per_batch[i][j])
-            class_masks.append(masks_per_batch[i][j])
           else:
             num_discarded_labels += 1
+      class_masks = masks_per_batch
 
       if mc.DEBUG_MODE:
         print ('Warning: Discarded {}/({}) labels that are assigned to the same'
@@ -217,51 +223,91 @@ def train():
               label_indices,
               [mc.BATCH_SIZE, mc.ANCHORS, mc.CLASSES],
               [1.0]*len(label_indices)),
-          model.class_masks: tf.stack(class_masks, axis = 0)
+          model.class_masks: np.stack(class_masks, axis = 0)
       }
 
-      if step % FLAGS.summary_step == 0:
-        op_list = [
-            model.train_op, model.loss, summary_op, model.det_boxes,
-            model.det_probs, model.det_class, model.conf_loss,
-            model.bbox_loss, model.class_loss
-        ]
-        _, loss_value, summary_str, det_boxes, det_probs, det_class, conf_loss, \
-            bbox_loss, class_loss = sess.run(op_list, feed_dict=feed_dict)
+      if FLAGS.net == 'resnet50_filter':
+        if step % FLAGS.summary_step == 0:
+          op_list = [
+            model.train_op, model.loss, summary_op, model.class_loss,
+            model.preds
+          ]
+          _, loss_value, summary_str, class_loss, pred_mask \
+            = sess.run(op_list, feed_dict=feed_dict)
 
-        _viz_prediction_result(
-            model, image_per_batch, bbox_per_batch, label_per_batch, det_boxes,
-            det_class, det_probs)
-        image_per_batch = bgr_to_rgb(image_per_batch)
-        viz_summary = sess.run(tf.summary.merge([model.viz_op, model.mask_viz_op]),
-                            feed_dict={model.image_to_show: image_per_batch,
-                                       model.mask_to_show: masks_per_batch})
+          image_per_batch = bgr_to_rgb(image_per_batch)
+          viz_summary = sess.run(tf.summary.merge([model.viz_op, model.mask_viz_op, model.mask_pred_viz_op]),
+                                 feed_dict={model.image_to_show: image_per_batch,
+                                            model.mask_to_show: masks_per_batch,
+                                            model.mask_pred: pred_mask})
 
-        num_discarded_labels_op = tf.summary.scalar(
-            'counter/num_discarded_labels', num_discarded_labels)
-        num_labels_op = tf.summary.scalar(
-            'counter/num_labels', num_labels)
+          num_discarded_labels_op = tf.summary.scalar(
+              'counter/num_discarded_labels', num_discarded_labels)
+          num_labels_op = tf.summary.scalar(
+              'counter/num_labels', num_labels)
 
-        counter_summary_str = sess.run([num_discarded_labels_op, num_labels_op])
+          counter_summary_str = sess.run([num_discarded_labels_op, num_labels_op])
 
-        summary_writer.add_summary(summary_str, step)
-        summary_writer.add_summary(viz_summary, step)
+          summary_writer.add_summary(summary_str, step)
+          summary_writer.add_summary(viz_summary, step)
 
-        for sum_str in counter_summary_str:
-          summary_writer.add_summary(sum_str, step)
+          for sum_str in counter_summary_str:
+            summary_writer.add_summary(sum_str, step)
 
-        print ('conf_loss: {}, bbox_loss: {}, class_loss: {}'.
-            format(conf_loss, bbox_loss, class_loss))
+          print ('class_loss: {}'.
+              format(class_loss))
+        else:
+          _, loss_value, class_loss = sess.run(
+              [model.train_op, model.loss, model.class_loss],
+            feed_dict=feed_dict)
+
+        assert not np.isnan(loss_value), \
+          'Model diverged. Total loss: {}, class_loss: {}' \
+          ''.format(loss_value, class_loss)
       else:
-        _, loss_value, conf_loss, bbox_loss, class_loss = sess.run(
-            [model.train_op, model.loss, model.conf_loss, model.bbox_loss,
-             model.class_loss], feed_dict=feed_dict)
+        if step % FLAGS.summary_step == 0:
+          op_list = [
+              model.train_op, model.loss, summary_op, model.det_boxes,
+              model.det_probs, model.det_class, model.conf_loss,
+              model.bbox_loss, model.class_loss
+          ]
+          _, loss_value, summary_str, det_boxes, det_probs, det_class, conf_loss, \
+              bbox_loss, class_loss = sess.run(op_list, feed_dict=feed_dict)
+
+          _viz_prediction_result(
+              model, image_per_batch, bbox_per_batch, label_per_batch, det_boxes,
+              det_class, det_probs)
+          image_per_batch = bgr_to_rgb(image_per_batch)
+          viz_summary = sess.run(tf.summary.merge([model.viz_op, model.mask_viz_op]),
+                              feed_dict={model.image_to_show: image_per_batch,
+                                         model.mask_to_show: masks_per_batch})
+
+          num_discarded_labels_op = tf.summary.scalar(
+              'counter/num_discarded_labels', num_discarded_labels)
+          num_labels_op = tf.summary.scalar(
+              'counter/num_labels', num_labels)
+
+          counter_summary_str = sess.run([num_discarded_labels_op, num_labels_op])
+
+          summary_writer.add_summary(summary_str, step)
+          summary_writer.add_summary(viz_summary, step)
+
+          for sum_str in counter_summary_str:
+            summary_writer.add_summary(sum_str, step)
+
+          print ('conf_loss: {}, bbox_loss: {}, class_loss: {}'.
+              format(conf_loss, bbox_loss, class_loss))
+        else:
+          _, loss_value, conf_loss, bbox_loss, class_loss = sess.run(
+              [model.train_op, model.loss, model.conf_loss, model.bbox_loss,
+               model.class_loss], feed_dict=feed_dict)
+
+        assert not np.isnan(loss_value), \
+          'Model diverged. Total loss: {}, conf_loss: {}, bbox_loss: {}, ' \
+          'class_loss: {}'.format(loss_value, conf_loss, bbox_loss, class_loss)
 
       duration = time.time() - start_time
 
-      assert not np.isnan(loss_value), \
-          'Model diverged. Total loss: {}, conf_loss: {}, bbox_loss: {}, ' \
-          'class_loss: {}'.format(loss_value, conf_loss, bbox_loss, class_loss)
 
       if step % 10 == 0:
         num_images_per_step = mc.BATCH_SIZE
@@ -279,8 +325,8 @@ def train():
         saver.save(sess, checkpoint_path, global_step=step)
 
 def main(argv=None):  # pylint: disable=unused-argument
-  if tf.gfile.Exists(FLAGS.train_dir):
-    tf.gfile.DeleteRecursively(FLAGS.train_dir)
+  #if tf.gfile.Exists(FLAGS.train_dir):
+  #  tf.gfile.DeleteRecursively(FLAGS.train_dir)
   tf.gfile.MakeDirs(FLAGS.train_dir)
   train()
 

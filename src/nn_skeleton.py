@@ -101,8 +101,9 @@ class ModelSkeleton:
         name='iou', dtype=tf.float32
     )
 
+    # Tensor representing the existence of an object of a class in each grid cell
     self.class_masks = tf.placeholder(
-      tf.float32, [mc.BATCH_SIZE, mc.GRID_CELLS, mc.CLASSES],
+      tf.float32, [mc.BATCH_SIZE, 24, 78, mc.CLASSES],
       name='class_masks')
 
 
@@ -226,7 +227,7 @@ class ModelSkeleton:
           xmin = tf.maximum(box1[0], box2[0], name='xmin')
           ymin = tf.maximum(box1[1], box2[1], name='ymin')
           xmax = tf.minimum(box1[2], box2[2], name='xmax')
-          ymax = tf.minimum(box1[3], box2[3], name='ymax')
+          max = tf.minimum(box1[3], box2[3], name='ymax')
 
           w = tf.maximum(0.0, xmax-xmin, name='inter_w')
           h = tf.maximum(0.0, ymax-ymin, name='inter_h')

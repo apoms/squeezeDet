@@ -92,3 +92,20 @@ then
   --checkpoint_step=500 \
   --gpu=$USE_GPU
 fi
+
+# =========================================================================== #
+# command for resnet50_filter:
+# =========================================================================== #
+if [[ "$1" == "resnet50_filter" ]]
+then
+  python ./src/train.py \
+  --dataset=KITTI \
+  --pretrained_model_path=./data/ResNet/ResNet-50-weights.pkl \
+  --data_path=/n/scanner/datasets/KITTI \
+  --image_set=train \
+  --train_dir=/n/scanner/apoms/train-logs/resnet_filter_biased/train \
+  --net=resnet50_filter \
+  --summary_step=100 \
+  --checkpoint_step=500 \
+  --gpu=$USE_GPU
+fi
