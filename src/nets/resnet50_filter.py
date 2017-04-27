@@ -148,13 +148,23 @@ class ResNet50Filter(ModelSkeleton):
     with tf.variable_scope('pos_class_regression') as scope:
       # Compute loss as difference in input masks from predicted masks
       # across class labels
-      num_pos = tf.reduce_sum(self.class_masks)
+      num_pos = tf.reduce_sum(self.class_masks, axis=[0, 1, 2], keep_dims=True)
+      class_exists = tf.cast(tf.greater(num_pos, 0.0), tf.float32)
+      num_classes_exist = tf.reduce_sum(class_exists)
+      num_pos = num_pos + (1.0 - class_exists)
       pos_mask = self.preds * self.class_masks
-      self.class_loss = tf.reduce_sum(
+
+      self.dim_class_loss = tf.reduce_sum(
         tf.multiply(tf.abs(pos_mask - self.class_masks),
                     tf.reshape(mc.CLASS_BIASSES, [1, 1, mc.CLASSES])),
-        name='class_loss'
-      ) / num_pos
+        axis=[0, 1, 2],
+        keep_dims=True,
+      )
+
+      self.class_loss = tf.truediv(
+        tf.reduce_sum(self.dim_class_loss / num_pos),
+        num_classes_exist,
+        name='class_los')
 
       tf.add_to_collection('losses', self.class_loss)
 

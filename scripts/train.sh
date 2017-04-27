@@ -103,7 +103,7 @@ then
   --pretrained_model_path=./data/ResNet/ResNet-50-weights.pkl \
   --data_path=/n/scanner/datasets/KITTI \
   --image_set=train \
-  --train_dir=/n/scanner/apoms/train-logs/resnet_filter_biased/train \
+  --train_dir=/n/scanner/apoms/train-logs/resnet_filter_biased_class/train \
   --net=resnet50_filter \
   --summary_step=100 \
   --checkpoint_step=500 \
