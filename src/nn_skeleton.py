@@ -101,11 +101,11 @@ class ModelSkeleton:
         name='iou', dtype=tf.float32
     )
 
-    # Tensor representing the existence of an object of a class in each grid cell
-    self.class_masks = tf.placeholder(
-      tf.float32, [mc.BATCH_SIZE, 24, 78, mc.CLASSES],
-      name='class_masks')
-
+    # Tensor representing the existence of an object of interest
+    # in each grid cell
+    self.roi_mask = tf.placeholder(
+      tf.float32, [mc.BATCH_SIZE, 12, 39, 1],
+      name='roi_mask')
 
     # model parameters
     self.model_params = []
@@ -356,7 +356,7 @@ class ModelSkeleton:
         max_outputs=mc.BATCH_SIZE)
 
     self.mask_to_show = tf.placeholder(
-        tf.float32, [None, 24, 78, 3],
+        tf.float32, [None, 12, 39, 1],
         name='mask_to_show'
     )
 

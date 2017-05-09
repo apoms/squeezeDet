@@ -181,7 +181,7 @@ def train():
           bbox_per_batch, masks_per_batch = imdb.read_batch()
 
       label_indices, bbox_indices, box_delta_values, mask_indices, box_values, \
-          class_masks = [], [], [], [], [], []
+          roi_mask = [], [], [], [], [], []
       aidx_set = set()
       num_discarded_labels = 0
       num_labels = 0
@@ -199,7 +199,7 @@ def train():
             box_values.extend(bbox_per_batch[i][j])
           else:
             num_discarded_labels += 1
-      class_masks = masks_per_batch
+      roi_mask = masks_per_batch
 
       if mc.DEBUG_MODE:
         print ('Warning: Discarded {}/({}) labels that are assigned to the same'
@@ -223,16 +223,16 @@ def train():
               label_indices,
               [mc.BATCH_SIZE, mc.ANCHORS, mc.CLASSES],
               [1.0]*len(label_indices)),
-          model.class_masks: np.stack(class_masks, axis = 0)
+          model.roi_mask: np.stack(roi_mask, axis = 0)
       }
 
       if FLAGS.net == 'resnet50_filter':
         if step % FLAGS.summary_step == 0:
           op_list = [
-            model.train_op, model.loss, summary_op, model.class_loss,
+            model.train_op, model.loss, summary_op, model.object_loss,
             model.preds
           ]
-          _, loss_value, summary_str, class_loss, pred_mask \
+          _, loss_value, summary_str, object_loss, pred_mask \
             = sess.run(op_list, feed_dict=feed_dict)
 
           image_per_batch = bgr_to_rgb(image_per_batch)
@@ -254,25 +254,25 @@ def train():
           for sum_str in counter_summary_str:
             summary_writer.add_summary(sum_str, step)
 
-          print ('class_loss: {}'.
-              format(class_loss))
+          print ('object_loss: {}'.
+              format(object_loss))
         else:
-          _, loss_value, class_loss = sess.run(
-              [model.train_op, model.loss, model.class_loss],
+          _, loss_value, object_loss = sess.run(
+              [model.train_op, model.loss, model.object_loss],
             feed_dict=feed_dict)
 
         assert not np.isnan(loss_value), \
-          'Model diverged. Total loss: {}, class_loss: {}' \
-          ''.format(loss_value, class_loss)
+          'Model diverged. Total loss: {}, object_loss: {}' \
+          ''.format(loss_value, object_loss)
       else:
         if step % FLAGS.summary_step == 0:
           op_list = [
               model.train_op, model.loss, summary_op, model.det_boxes,
               model.det_probs, model.det_class, model.conf_loss,
-              model.bbox_loss, model.class_loss
+              model.bbox_loss, model.object_loss
           ]
           _, loss_value, summary_str, det_boxes, det_probs, det_class, conf_loss, \
-              bbox_loss, class_loss = sess.run(op_list, feed_dict=feed_dict)
+              bbox_loss, object_loss = sess.run(op_list, feed_dict=feed_dict)
 
           _viz_prediction_result(
               model, image_per_batch, bbox_per_batch, label_per_batch, det_boxes,
@@ -295,16 +295,16 @@ def train():
           for sum_str in counter_summary_str:
             summary_writer.add_summary(sum_str, step)
 
-          print ('conf_loss: {}, bbox_loss: {}, class_loss: {}'.
-              format(conf_loss, bbox_loss, class_loss))
+          print ('conf_loss: {}, bbox_loss: {}, object_loss: {}'.
+              format(conf_loss, bbox_loss, object_loss))
         else:
-          _, loss_value, conf_loss, bbox_loss, class_loss = sess.run(
+          _, loss_value, conf_loss, bbox_loss, object_loss = sess.run(
               [model.train_op, model.loss, model.conf_loss, model.bbox_loss,
-               model.class_loss], feed_dict=feed_dict)
+               model.object_loss], feed_dict=feed_dict)
 
         assert not np.isnan(loss_value), \
           'Model diverged. Total loss: {}, conf_loss: {}, bbox_loss: {}, ' \
-          'class_loss: {}'.format(loss_value, conf_loss, bbox_loss, class_loss)
+          'object_loss: {}'.format(loss_value, conf_loss, bbox_loss, object_loss)
 
       duration = time.time() - start_time
 

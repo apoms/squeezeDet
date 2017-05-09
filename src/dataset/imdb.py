@@ -145,7 +145,7 @@ class imdb(object):
       im -= mc.BGR_MEANS
       orig_h, orig_w, _ = [float(v) for v in im.shape]
 
-      masks = np.zeros([24, 78, mc.CLASSES])
+      masks = np.zeros([12, 39, 1])
 
       # load annotations
       gt_labels = [b[4] for b in self._rois[idx][:]]
@@ -203,13 +203,13 @@ class imdb(object):
         overlaps = batch_iou(mc.ANCHOR_BOX, gt_bbox[i])
 
         cx, cy, w, h = gt_bbox[i, 0], gt_bbox[i, 1], gt_bbox[i, 2], gt_bbox[i, 3]
-        h_scale = float(mc.IMAGE_HEIGHT)/24
-        w_scale = float(mc.IMAGE_WIDTH)/78
+        h_scale = float(mc.IMAGE_HEIGHT)/12
+        w_scale = float(mc.IMAGE_WIDTH)/39
 
         h_lower, h_upper = int(np.floor((cy-h/2)/h_scale)), int(np.ceil((cy+h/2)/h_scale))
         w_lower, w_upper = int(np.floor((cx-w/2)/w_scale)), int(np.ceil((cx+h/2)/w_scale))
 
-        masks[h_lower: h_upper, w_lower: w_upper, gt_labels[i]] = 1.0
+        masks[h_lower: h_upper, w_lower: w_upper, 0] = 1.0
 
         aidx = len(mc.ANCHOR_BOX)
         for ov_idx in np.argsort(overlaps)[::-1]:

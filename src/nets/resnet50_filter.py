@@ -26,7 +26,7 @@ class ResNet50Filter(ModelSkeleton):
       self._add_viz_graph()
 
       self.mask_pred = tf.placeholder(
-        tf.float32, [mc.BATCH_SIZE, 24, 78, mc.CLASSES],
+        tf.float32, [mc.BATCH_SIZE, 12, 39, 1],
         name='mask_pred'
       )
       self.mask_pred_viz_op = tf.summary.image(
@@ -134,7 +134,7 @@ class ResNet50Filter(ModelSkeleton):
 
     dropout4 = tf.nn.dropout(res4f, self.keep_prob, name='drop4')
 
-    num_output = mc.CLASSES
+    num_output = 1
     self.conv_preds = self._conv_layer(
         'conv5', dropout4, filters=num_output, size=3, stride=1,
         padding='SAME', xavier=False, relu=False, stddev=0.0001)
@@ -148,34 +148,18 @@ class ResNet50Filter(ModelSkeleton):
     with tf.variable_scope('pos_class_regression') as scope:
       # Compute loss as difference in input masks from predicted masks
       # across class labels
-      num_pos = tf.reduce_sum(self.class_masks, axis=[0, 1, 2], keep_dims=True)
-      class_exists = tf.cast(tf.greater(num_pos, 0.0), tf.float32)
-      num_classes_exist = tf.reduce_sum(class_exists)
-      num_pos = num_pos + (1.0 - class_exists)
-      pos_mask = self.preds * self.class_masks
+      num_pos = tf.reduce_sum(self.roi_mask)
+      pos_mask = self.preds * self.roi_mask
 
-      self.dim_class_loss = tf.reduce_sum(
-        tf.multiply(tf.abs(pos_mask - self.class_masks),
-                    tf.reshape(mc.CLASS_BIASSES, [1, 1, mc.CLASSES])),
-        axis=[0, 1, 2],
-        keep_dims=True,
-      )
+      self.object_loss = 10 * (tf.reduce_sum(tf.abs(pos_mask - self.roi_mask))/(num_pos + 1))
 
-      self.class_loss = tf.truediv(
-        tf.reduce_sum(self.dim_class_loss / num_pos),
-        num_classes_exist,
-        name='class_los')
-
-      tf.add_to_collection('losses', self.class_loss)
+      tf.add_to_collection('losses', self.object_loss)
 
     with tf.variable_scope('neg_class_regression') as scope:
-      num_neg = tf.reduce_sum(1.0 - self.class_masks)
-      neg_mask = (self.preds * (1.0 - self.class_masks))
-      self.background_loss = tf.reduce_sum(
-        tf.multiply(neg_mask,
-                    tf.reshape(mc.CLASS_BIASSES, [1, 1, mc.CLASSES])),
-        name='background_loss'
-      ) / num_neg
+      num_neg = tf.reduce_sum(1.0 - self.roi_mask)
+      neg_mask = (self.preds * (1.0 - self.roi_mask))
+
+      self.background_loss = 20 * (tf.reduce_sum(neg_mask) / (num_neg + 1))
 
       tf.add_to_collection('losses', self.background_loss)
 
@@ -197,7 +181,7 @@ class ResNet50Filter(ModelSkeleton):
         layer_name: layer name
         in_filters: number of filters in XX_branch2a and XX_branch2b layers.
         out_filters: number of filters in XX_branch2clayers.
-        donw_sample: if true, down sample the input feature map 
+        donw_sample: if true, down sample the input feature map
         freeze: if true, do not change parameters in this layer
       Returns:
         A residual branch output operation.

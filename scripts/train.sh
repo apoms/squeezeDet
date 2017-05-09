@@ -1,6 +1,7 @@
 #!/bin/bash
 
 export USE_GPU=0
+export CUDA_VISIBLE_DEVICES=3
 
 if [ $# -eq 0 ]
 then
@@ -101,11 +102,12 @@ then
   python ./src/train.py \
   --dataset=KITTI \
   --pretrained_model_path=./data/ResNet/ResNet-50-weights.pkl \
-  --data_path=/n/scanner/datasets/KITTI \
+  --data_path=/bigdata/ravi/datasets/kitti \
   --image_set=train \
-  --train_dir=/n/scanner/apoms/train-logs/resnet_filter_biased_class/train \
+  --train_dir=/bigdata/ravi/experiments/object_filter_resnet/train \
   --net=resnet50_filter \
   --summary_step=100 \
   --checkpoint_step=500 \
+  --max_steps=50000 \
   --gpu=$USE_GPU
 fi

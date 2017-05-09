@@ -10,8 +10,8 @@ def kitti_res50_filter_config():
   """Specify the parameters to tune below."""
   mc                       = base_model_config('KITTI')
 
-  mc.IMAGE_WIDTH           = 1242
-  mc.IMAGE_HEIGHT          = 375
+  mc.IMAGE_WIDTH           = 621
+  mc.IMAGE_HEIGHT          = 187
   mc.BATCH_SIZE            = 20
 
   mc.WEIGHT_DECAY          = 0.0001
@@ -59,7 +59,7 @@ def set_anchors(mc):
   center_x = np.reshape(
       np.transpose(
           np.reshape(
-              np.array([np.arange(1, W+1)*float(mc.IMAGE_WIDTH)/(W+1)]*H*B), 
+              np.array([np.arange(1, W+1)*float(mc.IMAGE_WIDTH)/(W+1)]*H*B),
               (B, H, W)
           ),
           (1, 2, 0)
