@@ -64,7 +64,7 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
     _t = {'im_detect': Timer(), 'im_read': Timer(), 'misc': Timer()}
 
     num_detection = 0.0
-    acc = float(0.0)
+    acc, missed, culled = float(0.0), float(0.0), float(0.0)
     for i in xrange(num_images):
       _t['im_read'].tic()
       images, scales, gt_masks = imdb.read_image_batch(shuffle=False)
@@ -83,6 +83,8 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
         assert gt_masks[0].shape == pred_masks[0][0].shape, \
                 'Ground truth mask and predicted mask have different dimensions'
         acc = (abs(gt_masks[0] - pred_masks[0][0]) < float(0.5)).sum() / (12 * 39)
+        missed = (gt_masks[0] - pred_masks[0][0] > float(0.9)).sum() / (12 * 39)
+        culled = (pred_masks[0][0] < float(0.1)).sum() / (12 * 39)
 
       else:
         _t['im_detect'].tic()
@@ -106,9 +108,11 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
         _t['misc'].toc()
 
       print ('im_detect: {:d}/{:d} im_read: {:.3f}s '
-             'detect: {:.3f}s misc: {:.3f}s, accuracy: {:.2f}'.format(
+             'detect: {:.3f}s misc: {:.3f}s, '
+             'accuracy: {:.2f}, missed: {:.2f}, culled: {:.2f}'.format(
                 i+1, num_images, _t['im_read'].average_time,
-                _t['im_detect'].average_time, _t['misc'].average_time, acc*float(100.0)))
+                _t['im_detect'].average_time, _t['misc'].average_time,
+                acc*float(100.0), missed*float(100.0), culled*float(100.0)))
 
     #print ('Evaluating detections...')
     #aps, ap_names = imdb.evaluate_detections(
