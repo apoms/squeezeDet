@@ -44,7 +44,6 @@ tf.app.flags.DEFINE_string('net', 'squeezeDet',
                            """Neural net architecture.""")
 tf.app.flags.DEFINE_string('gpu', '0', """gpu id.""")
 
-
 def eval_once(saver, ckpt_path, summary_writer, imdb, model):
 
   with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
@@ -57,6 +56,11 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
     global_step = ckpt_path.split('/')[-1].split('-')[-1]
 
     num_images = len(imdb.image_idx)
+
+    total_acc, total_missed, total_culled = float(0.0), float(0.0), float(0.0)
+
+    error_hist_bucket_width = 5
+    error_hist = [0 for _ in range(int(100/error_hist_bucket_width))]
 
     all_boxes = [[[] for _ in xrange(num_images)]
                  for _ in xrange(imdb.num_classes)]
@@ -82,9 +86,20 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
 
         assert gt_masks[0].shape == pred_masks[0][0].shape, \
                 'Ground truth mask and predicted mask have different dimensions'
+
+        # Metrics
         acc = (abs(gt_masks[0] - pred_masks[0][0]) < float(0.5)).sum() / (12 * 39)
         missed = (gt_masks[0] - pred_masks[0][0] > float(0.9)).sum() / (12 * 39)
         culled = (pred_masks[0][0] < float(0.1)).sum() / (12 * 39)
+
+        # Update totals
+        total_acc = total_acc + acc;
+        total_missed = total_missed + missed
+        total_culled = total_culled + culled
+
+        # Update histogram
+        int_missed = int(np.floor(missed*float(100.0)/float(error_hist_bucket_width)))
+        error_hist[int_missed] = error_hist[int_missed] + 1
 
       else:
         _t['im_detect'].tic()
@@ -109,10 +124,21 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
 
       print ('im_detect: {:d}/{:d} im_read: {:.3f}s '
              'detect: {:.3f}s misc: {:.3f}s, '
-             'accuracy: {:.2f}, missed: {:.2f}, culled: {:.2f}'.format(
+             'accuracy: {:.2f}%, missed: {:.2f}%, culled: {:.2f}%'.format(
                 i+1, num_images, _t['im_read'].average_time,
                 _t['im_detect'].average_time, _t['misc'].average_time,
                 acc*float(100.0), missed*float(100.0), culled*float(100.0)))
+
+    total_acc = total_acc / float(num_images)
+    total_missed = total_missed / float(num_images)
+    total_culled = total_culled / float(num_images)
+    print('Total # images: {:d}, Avg accuracy: {:.2f}%, '
+          'Avg error: {:.2f}%, Avg culling: {:.2f}%'.format(
+            num_images,
+            total_acc*float(100.0),
+            total_missed*float(100.0),
+            total_culled*float(100.0) ))
+    print('Error histogram: {0}'.format(error_hist))
 
     #print ('Evaluating detections...')
     #aps, ap_names = imdb.evaluate_detections(
@@ -205,7 +231,7 @@ def evaluate():
     saver = tf.train.Saver(model.model_params)
 
     summary_writer = tf.summary.FileWriter(FLAGS.eval_dir, g)
-    
+
     ckpts = set() 
     while True:
       if FLAGS.run_once:
