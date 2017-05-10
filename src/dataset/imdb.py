@@ -66,6 +66,8 @@ class imdb(object):
       shuffle: whether or not to shuffle the dataset
     Returns:
       images: length batch_size list of arrays [height, width, 3]
+      scales: ...
+      masks : the mask marking objects of interest for each image
     """
     mc = self.mc
     if shuffle:
@@ -82,19 +84,37 @@ class imdb(object):
         batch_idx = self._image_idx[self._cur_idx:self._cur_idx+mc.BATCH_SIZE]
         self._cur_idx += mc.BATCH_SIZE
 
-    images, scales = [], []
-    for i in batch_idx:
-      im = cv2.imread(self._image_path_at(i))
+    images, scales, masks = [], [], []
+    for idx in batch_idx:
+      im = cv2.imread(self._image_path_at(idx))
       im = im.astype(np.float32, copy=False)
       im -= mc.BGR_MEANS
       orig_h, orig_w, _ = [float(v) for v in im.shape]
+
+      mask = np.zeros([12, 39, 1])
+      gt_bbox = np.array([[b[0], b[1], b[2], b[3]] for b in self._rois[idx][:]])
+
       im = cv2.resize(im, (mc.IMAGE_WIDTH, mc.IMAGE_HEIGHT))
       x_scale = mc.IMAGE_WIDTH/orig_w
       y_scale = mc.IMAGE_HEIGHT/orig_h
+
+      gt_bbox[:, 0::2] = gt_bbox[:, 0::2]*x_scale
+      gt_bbox[:, 1::2] = gt_bbox[:, 1::2]*y_scale
+
+      for i in range(len(gt_bbox)):
+        cx, cy, w, h = gt_bbox[i, 0], gt_bbox[i, 1], gt_bbox[i, 2], gt_bbox[i, 3]
+        h_scale = float(mc.IMAGE_HEIGHT)/12
+        w_scale = float(mc.IMAGE_WIDTH)/39
+
+        h_lower, h_upper = int(np.floor((cy-h/2)/h_scale)),int(np.ceil((cy+h/2)/h_scale))
+        w_lower, w_upper = int(np.floor((cx-w/2)/w_scale)),int(np.ceil((cx+h/2)/w_scale))
+        mask[h_lower: h_upper, w_lower: w_upper, 0] = 1.0
+
       images.append(im)
       scales.append((x_scale, y_scale))
+      masks.append(mask)
 
-    return images, scales
+    return images, scales, masks
 
   def read_batch(self, shuffle=True):
     """Read a batch of image and bounding box annotations.

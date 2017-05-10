@@ -64,84 +64,100 @@ def eval_once(saver, ckpt_path, summary_writer, imdb, model):
     _t = {'im_detect': Timer(), 'im_read': Timer(), 'misc': Timer()}
 
     num_detection = 0.0
+    acc = float(0.0)
     for i in xrange(num_images):
       _t['im_read'].tic()
-      images, scales = imdb.read_image_batch(shuffle=False)
+      images, scales, gt_masks = imdb.read_image_batch(shuffle=False)
       _t['im_read'].toc()
 
-      _t['im_detect'].tic()
-      det_boxes, det_probs, det_class = sess.run(
-          [model.det_boxes, model.det_probs, model.det_class],
-          feed_dict={model.image_input:images, model.keep_prob: 1.0})
-      _t['im_detect'].toc()
+      if FLAGS.net == 'resnet50_filter':
+        _t['im_detect'].tic()
+        pred_masks = sess.run(
+            [model.preds],
+            feed_dict={model.image_input:images, model.keep_prob: 1.0})
+        _t['im_detect'].toc()
 
-      _t['misc'].tic()
-      for j in range(len(det_boxes)): # batch
-        # rescale
-        det_boxes[j, :, 0::2] /= scales[j][0]
-        det_boxes[j, :, 1::2] /= scales[j][1]
+        _t['misc'].tic()
+        _t['misc'].toc()
 
-        det_bbox, score, det_class = model.filter_prediction(
-            det_boxes[j], det_probs[j], det_class[j])
+        assert gt_masks[0].shape == pred_masks[0][0].shape, \
+                'Ground truth mask and predicted mask have different dimensions'
+        acc = (abs(gt_masks[0] - pred_masks[0][0]) < float(0.5)).sum() / (12 * 39)
 
-        num_detection += len(det_bbox)
-        for c, b, s in zip(det_class, det_bbox, score):
-          all_boxes[c][i].append(bbox_transform(b) + [s])
-      _t['misc'].toc()
+      else:
+        _t['im_detect'].tic()
+        det_boxes, det_probs, det_class = sess.run(
+            [model.det_boxes, model.det_probs, model.det_class],
+            feed_dict={model.image_input:images, model.keep_prob: 1.0})
+        _t['im_detect'].toc()
+
+        _t['misc'].tic()
+        for j in range(len(det_boxes)): # batch
+          # rescale
+          det_boxes[j, :, 0::2] /= scales[j][0]
+          det_boxes[j, :, 1::2] /= scales[j][1]
+
+          det_bbox, score, det_class = model.filter_prediction(
+              det_boxes[j], det_probs[j], det_class[j])
+
+          num_detection += len(det_bbox)
+          for c, b, s in zip(det_class, det_bbox, score):
+            all_boxes[c][i].append(bbox_transform(b) + [s])
+        _t['misc'].toc()
 
       print ('im_detect: {:d}/{:d} im_read: {:.3f}s '
-             'detect: {:.3f}s misc: {:.3f}s'.format(
+             'detect: {:.3f}s misc: {:.3f}s, accuracy: {:.2f}'.format(
                 i+1, num_images, _t['im_read'].average_time,
-                _t['im_detect'].average_time, _t['misc'].average_time))
+                _t['im_detect'].average_time, _t['misc'].average_time, acc*float(100.0)))
 
-    print ('Evaluating detections...')
-    aps, ap_names = imdb.evaluate_detections(
-        FLAGS.eval_dir, global_step, all_boxes)
+    #print ('Evaluating detections...')
+    #aps, ap_names = imdb.evaluate_detections(
+    #    FLAGS.eval_dir, global_step, all_boxes)
 
-    print ('Evaluation summary:')
-    print ('  Average number of detections per image: {}:'.format(
-      num_detection/num_images))
-    print ('  Timing:')
-    print ('    im_read: {:.3f}s detect: {:.3f}s misc: {:.3f}s'.format(
-      _t['im_read'].average_time, _t['im_detect'].average_time,
-      _t['misc'].average_time))
-    print ('  Average precisions:')
+    #print ('Evaluation summary:')
+    #print ('  Average number of detections per image: {}:'.format(
+    #  num_detection/num_images))
+    #print ('  Timing:')
+    #print ('    im_read: {:.3f}s detect: {:.3f}s misc: {:.3f}s'.format(
+    #  _t['im_read'].average_time, _t['im_detect'].average_time,
+    #  _t['misc'].average_time))
+    #print ('  Average precisions:')
 
-    eval_summary_ops = []
-    for cls, ap in zip(ap_names, aps):
-      eval_summary_ops.append(
-          tf.summary.scalar('APs/'+cls, ap)
-      )
-      print ('    {}: {:.3f}'.format(cls, ap))
-    print ('    Mean average precision: {:.3f}'.format(np.mean(aps)))
-    eval_summary_ops.append(
-        tf.summary.scalar('APs/mAP', np.mean(aps))
-    )
-    eval_summary_ops.append(
-        tf.summary.scalar('timing/image_detect', _t['im_detect'].average_time)
-    )
-    eval_summary_ops.append(
-        tf.summary.scalar('timing/image_read', _t['im_read'].average_time)
-    )
-    eval_summary_ops.append(
-        tf.summary.scalar('timing/post_process', _t['misc'].average_time)
-    )
-    eval_summary_ops.append(
-        tf.summary.scalar('num_detections_per_image', num_detection/num_images)
-    )
+    #eval_summary_ops = []
+    #for cls, ap in zip(ap_names, aps):
+    #  eval_summary_ops.append(
+    #      tf.summary.scalar('APs/'+cls, ap)
+    #  )
+    #  print ('    {}: {:.3f}'.format(cls, ap))
+    #print ('    Mean average precision: {:.3f}'.format(np.mean(aps)))
+    #eval_summary_ops.append(
+    #    tf.summary.scalar('APs/mAP', np.mean(aps))
+    #)
+    #eval_summary_ops.append(
+    #    tf.summary.scalar('timing/image_detect', _t['im_detect'].average_time)
+    #)
+    #eval_summary_ops.append(
+    #    tf.summary.scalar('timing/image_read', _t['im_read'].average_time)
+    #)
+    #eval_summary_ops.append(
+    #    tf.summary.scalar('timing/post_process', _t['misc'].average_time)
+    #)
+    #eval_summary_ops.append(
+    #    tf.summary.scalar('num_detections_per_image', num_detection/num_images)
+    #)
 
-    print ('Analyzing detections...')
-    stats, ims = imdb.do_detection_analysis_in_eval(
-        FLAGS.eval_dir, global_step)
-    for k, v in stats.iteritems():
-      eval_summary_ops.append(
-          tf.summary.scalar(
-            'Detection Analysis/'+k, v)
-      )
+    #print ('Analyzing detections...')
+    #stats, ims = imdb.do_detection_analysis_in_eval(
+    #    FLAGS.eval_dir, global_step)
+    #for k, v in stats.iteritems():
+    #  eval_summary_ops.append(
+    #      tf.summary.scalar(
+    #        'Detection Analysis/'+k, v)
+    #  )
 
-    eval_summary_str = sess.run(eval_summary_ops)
-    for sum_str in eval_summary_str:
-      summary_writer.add_summary(sum_str, global_step)
+    #eval_summary_str = sess.run(eval_summary_ops)
+    #for sum_str in eval_summary_str:
+    #  summary_writer.add_summary(sum_str, global_step)
 
 def evaluate():
   """Evaluate."""
@@ -151,7 +167,8 @@ def evaluate():
   with tf.Graph().as_default() as g:
 
     assert FLAGS.net == 'vgg16' or FLAGS.net == 'resnet50' \
-        or FLAGS.net == 'squeezeDet' or FLAGS.net == 'squeezeDet+', \
+        or FLAGS.net == 'squeezeDet' or FLAGS.net == 'squeezeDet+' \
+        or FLAGS.net == 'resnet50_filter', \
         'Selected neural net architecture not supported: {}'.format(FLAGS.net)
     if FLAGS.net == 'vgg16':
       mc = kitti_vgg16_config()
@@ -173,6 +190,11 @@ def evaluate():
       mc.BATCH_SIZE = 1 # TODO(bichen): allow batch size > 1
       mc.LOAD_PRETRAINED_MODEL = False
       model = SqueezeDetPlus(mc, FLAGS.gpu)
+    elif FLAGS.net == 'resnet50_filter':
+      mc = kitti_res50_filter_config()
+      mc.BATCH_SIZE = 1 # TODO(bichen): allow batch size > 1
+      mc.LOAD_PRETRAINED_MODEL = False
+      model = ResNet50Filter(mc, FLAGS.gpu)
 
     imdb = kitti(FLAGS.image_set, FLAGS.data_path, mc)
 

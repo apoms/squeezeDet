@@ -3,14 +3,14 @@
 # =========================================================================== #
 # command for squeezeDet:
 # =========================================================================== #
-python ./src/eval.py \
-  --dataset=KITTI \
-  --data_path=./data/KITTI \
-  --image_set=val \
-  --eval_dir=/tmp/bichen/logs/SqueezeDet/eval_val \
-  --checkpoint_path=/tmp/bichen/logs/SqueezeDet/train \
-  --net=squeezeDet \
-  --gpu=0
+# python ./src/eval.py \
+#   --dataset=KITTI \
+#   --data_path=./data/KITTI \
+#   --image_set=val \
+#   --eval_dir=/tmp/bichen/logs/SqueezeDet/eval_val \
+#   --checkpoint_path=/tmp/bichen/logs/SqueezeDet/train \
+#   --net=squeezeDet \
+#   --gpu=0
 
 # =========================================================================== #
 # command for squeezeDet+:
@@ -47,3 +47,15 @@ python ./src/eval.py \
 #   --checkpoint_path=/tmp/bichen/logs/resnet50/train \
 #   --net=resnet50 \
 #   --gpu=0
+
+# =========================================================================== #
+# command for resnet50_filter:
+# =========================================================================== #
+python ./src/eval.py \
+  --dataset=KITTI \
+  --data_path=/bigdata/ravi/datasets/kitti \
+  --image_set=trainval \
+  --eval_dir=/bigdata/prashanm/experiments/object_filter_resnet \
+  --checkpoint_path=/bigdata/ravi/experiments/object_filter_resnet/train \
+  --net=resnet50_filter \
+  --gpu=0
